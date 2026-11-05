@@ -1,7 +1,9 @@
 import subprocess
 import os
+import shutil
 import logging
 from typing import List, Dict, Any, Optional
+from pathlib import Path
 import config
 
 logger = logging.getLogger(__name__)
@@ -102,3 +104,26 @@ class MetadataWriter:
             
         return True
 
+    @staticmethod
+    def dispatch_to_photoftp(image_path: str, destination_folder: str = "PhotoFtp/send", target_filename: Optional[str] = None) -> str:
+        """
+        Copies or moves the metadata-tagged photo into PhotoSender's transmission folder.
+        This triggers PhotoSender's FileWalker -> Queue -> FileSenderService (FTP send).
+        """
+        dest_dir = Path(destination_folder)
+        # If relative, check if running on VPS (/photoftp/PhotoFtp/send) or local
+        if not dest_dir.is_absolute():
+            vps_path = Path("/photoftp") / destination_folder
+            if vps_path.parent.exists():
+                dest_dir = vps_path
+            else:
+                dest_dir = Path(__file__).resolve().parent.parent.parent / "photosender-master" / destination_folder
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        final_name = target_filename if target_filename else os.path.basename(image_path)
+        dest_file = dest_dir / final_name
+
+        shutil.copy2(image_path, str(dest_file))
+        logger.info(f"Dispatched photo {final_name} to PhotoSender ingest folder: {dest_file}")
+        return str(dest_file)

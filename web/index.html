@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="it" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhotoSender AI - Match Desk & Face Ingest</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 500: '#2563eb', 600: '#1d4ed8', 700: '#1e40af' },
+            darkbg: '#0f172a',
+            surface: '#1e293b',
+            border: '#334155'
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="bg-darkbg text-slate-100 min-h-screen flex flex-col font-sans select-none">
+
+  <!-- TOP BAR -->
+  <header class="bg-surface border-b border-border px-4 py-2.5 flex items-center justify-between shadow-md">
+    <div class="flex items-center gap-3">
+      <div class="bg-blue-600 text-white font-extrabold text-sm px-2.5 py-1 rounded shadow">SP24</div>
+      <h1 class="text-base font-bold text-white tracking-wide flex items-center gap-2">
+        <span>PhotoSender AI</span>
+        <span class="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-semibold">Match Desk (Face AI)</span>
+      </h1>
+    </div>
+
+    <!-- Active Matchup Selector -->
+    <div class="flex items-center gap-3">
+      <label class="text-xs text-slate-400 font-medium">Partita Attiva:</label>
+      <select id="matchupSelect" onchange="onMatchupChanged()" class="bg-darkbg border border-border text-sm rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-blue-500">
+        <option value="">Caricamento partite...</option>
+      </select>
+      <button onclick="loadMatchups()" title="Aggiorna partite" class="p-1.5 text-slate-400 hover:text-white rounded bg-darkbg border border-border">
+        <i class="fa-solid fa-rotate"></i>
+      </button>
+    </div>
+
+    <!-- Photographer & Hardware Info -->
+    <div class="flex items-center gap-4 text-xs">
+      <div class="hidden sm:flex items-center gap-1.5 text-slate-400 bg-darkbg border border-border px-2.5 py-1 rounded-md">
+        <i class="fa-solid fa-microchip text-blue-400"></i>
+        <span id="hardwareBadge">Hardware: Check...</span>
+      </div>
+      <div class="flex items-center gap-1.5 text-slate-300">
+        <i class="fa-solid fa-camera text-slate-400"></i>
+        <span class="font-medium">Marco Canoniero</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN DESK VIEW -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- LEFT COLUMN: PHOTO PREVIEW & INGEST (50%) -->
+    <div class="w-1/2 flex flex-col border-r border-border bg-darkbg relative p-4">
+      
+      <!-- Drag & Drop Overlay / Ingest Bar -->
+      <div class="flex items-center justify-between pb-3 mb-2 border-b border-border/60">
+        <div class="flex items-center gap-2">
+          <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span>Carica Foto</span>
+            <input type="file" id="fileInput" multiple accept="image/jpeg,image/jpg" class="hidden" onchange="handleFileSelect(event)">
+          </label>
+          <span id="queueCounter" class="text-xs text-slate-400">Nessuna foto caricata</span>
+        </div>
+
+        <div class="flex items-center gap-1">
+          <button onclick="prevPhoto()" id="btnPrev" disabled class="p-1.5 rounded bg-surface border border-border text-slate-400 disabled:opacity-40 hover:text-white">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          <span id="photoIndexBadge" class="text-xs text-slate-400 px-2">0 / 0</span>
+          <button onclick="nextPhoto()" id="btnNext" disabled class="p-1.5 rounded bg-surface border border-border text-slate-400 disabled:opacity-40 hover:text-white">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Photo Viewport -->
+      <div id="dropzone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)"
+           class="flex-1 rounded-xl border-2 border-dashed border-border bg-surface/40 flex items-center justify-center relative overflow-hidden group">
+        
+        <!-- Empty State -->
+        <div id="emptyState" class="text-center p-8">
+          <div class="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mx-auto mb-3 text-slate-500 text-2xl">
+            <i class="fa-regular fa-image"></i>
+          </div>
+          <h3 class="text-sm font-semibold text-slate-300">Trascina qui le foto del match</h3>
+          <p class="text-xs text-slate-500 mt-1 max-w-xs">Oppure clicca su "Carica Foto". Riconoscimento facciale e didascalia automatici in 1 secondo.</p>
+        </div>
+
+        <!-- Rendered Image Canvas -->
+        <div id="imageWrapper" class="hidden w-full h-full relative flex items-center justify-center">
+          <img id="mainImage" src="" class="max-w-full max-h-full object-contain shadow-2xl rounded" alt="Preview">
+          <div id="faceBox" class="absolute border-2 border-emerald-400 rounded shadow-lg pointer-events-none transition-all hidden"></div>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div id="analysisLoader" class="absolute inset-0 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3 hidden z-20">
+          <div class="animate-spin text-3xl text-blue-500"><i class="fa-solid fa-circle-notch"></i></div>
+          <span class="text-sm font-medium text-slate-200">Analisi Volto & Didascalia in corso...</span>
+        </div>
+      </div>
+
+      <!-- Footer Photo Metadata Stats -->
+      <div id="photoMetaFooter" class="pt-3 mt-2 flex items-center justify-between text-xs text-slate-400 border-t border-border/40">
+        <div class="flex items-center gap-3">
+          <span id="statResolution">-- x -- px</span>
+          <span class="text-slate-600">|</span>
+          <span id="statSharpness">Nitidezza: --</span>
+          <span class="text-slate-600">|</span>
+          <span id="statFaces">Volti: --</span>
+        </div>
+        <div id="saveStatus" class="font-semibold text-emerald-400 flex items-center gap-1.5 hidden">
+          <i class="fa-solid fa-check"></i>
+          <span>Trasmessa a PhotoSender FTP</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN: CONTROL PANEL, ROSTER CHIPS & METADATA (50%) -->
+    <div class="w-1/2 flex flex-col bg-surface overflow-y-auto p-4 space-y-4">
+      
+      <!-- 1. FACE RECOGNITION MATCH RESULT -->
+      <div class="bg-darkbg border border-border rounded-xl p-3.5 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <i class="fa-solid fa-id-badge text-emerald-400"></i>
+            <span>Riconoscimento Facciale (AI)</span>
+          </span>
+          <span id="faceConfidenceBadge" class="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">In attesa foto</span>
+        </div>
+
+        <div id="playerMatchCard" class="flex items-center gap-3">
+          <div id="faceThumb" class="w-12 h-12 rounded-lg bg-slate-800 border border-border flex items-center justify-center text-slate-500 overflow-hidden shrink-0">
+            <i class="fa-solid fa-user text-lg"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div id="detectedPlayerName" class="text-base font-bold text-white truncate">Nessun volto analizzato</div>
+            <div id="detectedPlayerTeam" class="text-xs text-slate-400 truncate">Seleziona un giocatore dalla rosa se non riconosciuto</div>
+          </div>
+          <button id="btnLearnFace" onclick="trainCurrentFace()" title="Memorizza questo volto per il giocatore selezionato" class="hidden px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-medium flex items-center gap-1">
+            <i class="fa-solid fa-brain"></i>
+            <span>Memorizza Volto</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. ROSTER 1-CLICK PLAYER BUTTONS -->
+      <div class="bg-darkbg border border-border rounded-xl p-3.5 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <i class="fa-solid fa-users text-blue-400"></i>
+            <span>Rosa Partita (Click rapido per cambiare giocatore)</span>
+          </span>
+          <span id="rosterTeamsLabel" class="text-xs text-slate-400 font-medium">Home vs Away</span>
+        </div>
+
+        <!-- Home Team Chips -->
+        <div>
+          <div id="homeTeamNameHeader" class="text-xs font-semibold text-blue-400 mb-1.5">Squadra Casa</div>
+          <div id="homeRosterGrid" class="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1 bg-surface/50 rounded-lg border border-border/40">
+            <span class="text-xs text-slate-500 p-2">Nessun giocatore</span>
+          </div>
+        </div>
+
+        <!-- Away Team Chips -->
+        <div>
+          <div id="awayTeamNameHeader" class="text-xs font-semibold text-rose-400 mb-1.5">Squadra Trasferta</div>
+          <div id="awayRosterGrid" class="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1 bg-surface/50 rounded-lg border border-border/40">
+            <span class="text-xs text-slate-500 p-2">Nessun giocatore</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. ACTIONS & SITUATION 1-CLICK PANELS -->
+      <div class="bg-darkbg border border-border rounded-xl p-3.5">
+        <span class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 block flex items-center gap-1.5">
+          <i class="fa-solid fa-bolt text-amber-400"></i>
+          <span>Azione / Tipologia Scatto (1-Click)</span>
+        </span>
+        <div class="grid grid-cols-3 sm:grid-cols-4 gap-1.5 text-xs">
+          <button onclick="setActionType('GOAL_CELEBRATION')" class="action-btn px-2.5 py-1.5 rounded-lg border border-border bg-surface hover:bg-slate-700 text-left font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span>🎉</span> <span>Esultanza</span>
+          </button>
+          <button onclick="setActionType('BALL_CHALLENGE')" class="action-btn px-2.5 py-1.5 rounded-lg border border-border bg-surface hover:bg-slate-700 text-left font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span>🥊</span> <span>Contrasto</span>
+          </button>
+          <button onclick="setActionType('PLAYER_SHOOTING')" class="action-btn px-2.5 py-1.5 rounded-lg border border-border bg-surface hover:bg-slate-700 text-left font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span>👟</span> <span>Tiro</span>
+          </button>
+          <button onclick="setActionType('GOALKEEPER_ACTION')" class="action-btn px-2.5 py-1.5 rounded-lg border border-border bg-surface hover:bg-slate-700 text-left font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span>🧤</span> <span>Parata</span>
+          </button>
+          <button onclick="setActionType('PLAYER_PORTRAIT')" class="action-btn px-2.5 py-1.5 rounded-lg border border-border bg-surface hover:bg-slate-700 text-left font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span>👤</span> <span>Primo Piano</span>
+          </button>
+          <button onclick="setActionType('BENCH_COACH')" class="action-btn px-2.5 py-1.5 rounded-lg border border-border bg-surface hover:bg-slate-700 text-left font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span>🪑</span> <span>Panchina</span>
+          </button>
+          <button onclick="setActionType('SUPPORTERS')" class="action-btn px-2.5 py-1.5 rounded-lg border border-border bg-surface hover:bg-slate-700 text-left font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span>📢</span> <span>Tifosi</span>
+          </button>
+          <button onclick="setActionType('WARM_UP')" class="action-btn px-2.5 py-1.5 rounded-lg border border-border bg-surface hover:bg-slate-700 text-left font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span>⏱️</span> <span>Riscaldam.</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 4. EDITABLE CAPTION PREVIEW -->
+      <div class="bg-darkbg border border-border rounded-xl p-3.5 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <i class="fa-solid fa-pen-to-square text-blue-400"></i>
+            <span>Didascalia Inglese (Caption IMAGO)</span>
+          </label>
+          <button onclick="copyCaption()" title="Copia negli appunti" class="text-xs text-slate-400 hover:text-white">
+            <i class="fa-regular fa-copy"></i>
+          </button>
+        </div>
+        <textarea id="captionInput" rows="3" class="w-full bg-surface border border-border rounded-lg p-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500 leading-relaxed font-sans"></textarea>
+      </div>
+
+      <!-- 5. IMAGO KEYWORDS PREVIEW -->
+      <div class="bg-darkbg border border-border rounded-xl p-3.5 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <i class="fa-solid fa-tags text-yellow-400"></i>
+            <span>Keywords IMAGO (<span id="kwCount">0</span> termini)</span>
+          </span>
+        </div>
+        <div id="keywordsChips" class="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1 bg-surface/40 rounded-lg border border-border/40">
+          <span class="text-xs text-slate-500 p-1">Nessuna keyword generata</span>
+        </div>
+      </div>
+
+      <!-- 6. BIG APPROVE & TRANSMIT ACTION BUTTON -->
+      <div class="pt-2">
+        <button id="btnApproveSend" onclick="approveAndSend()" class="w-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-extrabold py-3.5 px-4 rounded-xl shadow-lg flex items-center justify-center gap-2.5 text-sm transition transform active:scale-[0.99]">
+          <i class="fa-solid fa-paper-plane text-base"></i>
+          <span>APPROVA METADATI E TRASMETTI SUBITO ALL'FTP</span>
+          <span class="text-xs font-medium bg-emerald-700/60 px-2 py-0.5 rounded text-emerald-200">[BARRA SPAZIO / INVIO]</span>
+        </button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- CLIENT-SIDE SCRIPT -->
+  <script>
+    let photoQueue = [];
+    let currentIndex = -1;
+    let currentMatchup = null;
+    let homePlayers = [];
+    let awayPlayers = [];
+    let currentPhotoData = null;
+
+    // Keyboard Shortcuts: Space or Enter to approve & send
+    window.addEventListener('keydown', (e) => {
+      // Don't trigger if user is actively typing in the textarea
+      if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        approveAndSend();
+      } else if (e.code === 'ArrowRight') {
+        nextPhoto();
+      } else if (e.code === 'ArrowLeft') {
+        prevPhoto();
+      }
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      checkStatus();
+      loadMatchups();
+    });
+
+    async function checkStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        document.getElementById('hardwareBadge').innerText = `${data.device_name}`;
+      } catch (err) {
+        document.getElementById('hardwareBadge').innerText = 'Offline';
+      }
+    }
+
+    async function loadMatchups() {
+      try {
+        const select = document.getElementById('matchupSelect');
+        const res = await fetch('/api/matchups');
+        const matchups = await res.json();
+        select.innerHTML = '';
+
+        if (!matchups || matchups.length === 0) {
+          select.innerHTML = '<option value="">Nessun matchup nel DB</option>';
+          return;
+        }
+
+        matchups.forEach((m, idx) => {
+          const opt = document.createElement('option');
+          opt.value = m.id;
+          opt.innerText = `${m.home_team_name || 'Home'} vs ${m.away_team_name || 'Away'}`;
+          select.appendChild(opt);
+        });
+
+        // Auto select first
+        select.value = matchups[0].id;
+        await onMatchupChanged();
+      } catch (err) {
+        console.error('Error loading matchups', err);
+      }
+    }
+
+    async function onMatchupChanged() {
+      const select = document.getElementById('matchupSelect');
+      const matchupId = select.value;
+      if (!matchupId) return;
+
+      try {
+        const res = await fetch(`/api/matchups/${matchupId}/roster`);
+        const data = await res.json();
+        currentMatchup = data.matchup;
+        homePlayers = data.home_players || [];
+        awayPlayers = data.away_players || [];
+
+        renderRosters();
+      } catch (err) {
+        console.error('Error loading roster for matchup', err);
+      }
+    }
+
+    function renderRosters() {
+      const homeHeader = document.getElementById('homeTeamNameHeader');
+      const awayHeader = document.getElementById('awayTeamNameHeader');
+      const homeGrid = document.getElementById('homeRosterGrid');
+      const awayGrid = document.getElementById('awayRosterGrid');
+
+      homeHeader.innerText = currentMatchup?.home_team_name || 'Squadra Casa';
+      awayHeader.innerText = currentMatchup?.away_team_name || 'Squadra Trasferta';
+
+      homeGrid.innerHTML = '';
+      homePlayers.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'px-2 py-1 bg-surface hover:bg-blue-600 text-slate-200 hover:text-white rounded text-xs border border-border/60 transition truncate flex items-center gap-1';
+        btn.innerHTML = `<span class="font-bold text-blue-400">#${p.number || ''}</span> <span>${p.last_name}</span>`;
+        btn.onclick = () => selectPlayerManually(p);
+        homeGrid.appendChild(btn);
+      });
+
+      awayGrid.innerHTML = '';
+      awayPlayers.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'px-2 py-1 bg-surface hover:bg-rose-600 text-slate-200 hover:text-white rounded text-xs border border-border/60 transition truncate flex items-center gap-1';
+        btn.innerHTML = `<span class="font-bold text-rose-400">#${p.number || ''}</span> <span>${p.last_name}</span>`;
+        btn.onclick = () => selectPlayerManually(p);
+        awayGrid.appendChild(btn);
+      });
+    }
+
+    function handleDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('border-blue-500'); }
+    function handleDragLeave(e) { e.currentTarget.classList.remove('border-blue-500'); }
+    function handleDrop(e) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('border-blue-500');
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        addFilesToQueue(Array.from(e.dataTransfer.files));
+      }
+    }
+
+    function handleFileSelect(e) {
+      if (e.target.files && e.target.files.length > 0) {
+        addFilesToQueue(Array.from(e.target.files));
+      }
+    }
+
+    function addFilesToQueue(files) {
+      const jpegs = files.filter(f => f.name.toLowerCase().endsWith('.jpg') || f.name.toLowerCase().endsWith('.jpeg'));
+      if (jpegs.length === 0) return;
+
+      const startIndex = photoQueue.length;
+      photoQueue = photoQueue.concat(jpegs);
+      updateQueueNav();
+
+      if (currentIndex === -1) {
+        loadPhoto(startIndex);
+      }
+    }
+
+    function updateQueueNav() {
+      document.getElementById('queueCounter').innerText = `${photoQueue.length} foto in coda`;
+      document.getElementById('photoIndexBadge').innerText = photoQueue.length > 0 ? `${currentIndex + 1} / ${photoQueue.length}` : '0 / 0';
+      document.getElementById('btnPrev').disabled = currentIndex <= 0;
+      document.getElementById('btnNext').disabled = currentIndex >= photoQueue.length - 1;
+    }
+
+    function prevPhoto() {
+      if (currentIndex > 0) loadPhoto(currentIndex - 1);
+    }
+
+    function nextPhoto() {
+      if (currentIndex < photoQueue.length - 1) loadPhoto(currentIndex + 1);
+    }
+
+    async function loadPhoto(index) {
+      if (index < 0 || index >= photoQueue.length) return;
+      currentIndex = index;
+      updateQueueNav();
+
+      const file = photoQueue[currentIndex];
+      const img = document.getElementById('mainImage');
+      const imageWrapper = document.getElementById('imageWrapper');
+      const emptyState = document.getElementById('emptyState');
+      const loader = document.getElementById('analysisLoader');
+      const faceBox = document.getElementById('faceBox');
+
+      emptyState.classList.add('hidden');
+      imageWrapper.classList.remove('hidden');
+      loader.classList.remove('hidden');
+      faceBox.classList.add('hidden');
+      document.getElementById('saveStatus').classList.add('hidden');
+
+      // Create preview object URL
+      const objectUrl = URL.createObjectURL(file);
+      img.src = objectUrl;
+
+      // Send to AI Face Recognition API
+      const formData = new FormData();
+      formData.append('file', file);
+      if (currentMatchup?.id) {
+        formData.append('matchup_id', currentMatchup.id);
+      }
+
+      try {
+        const res = await fetch('/api/analyze-face', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        currentPhotoData = data;
+        renderAnalysisResult(data);
+      } catch (err) {
+        console.error('AI Analysis failed', err);
+      } finally {
+        loader.classList.add('hidden');
+      }
+    }
+
+    function renderAnalysisResult(data) {
+      // 1. Stats
+      document.getElementById('statResolution').innerText = `${data.vision?.image_size?.[0] || '--'} x ${data.vision?.image_size?.[1] || '--'} px`;
+      document.getElementById('statSharpness').innerText = `Nitidezza: ${data.vision?.overall_sharpness || '--'}`;
+      document.getElementById('statFaces').innerText = `Volti: ${data.vision?.face_count || 0}`;
+
+      // 2. Face Box on Canvas if face detected
+      const faceBox = document.getElementById('faceBox');
+      const primaryFace = data.vision?.primary_face;
+      if (primaryFace && primaryFace.box) {
+        // Calculate relative coordinates
+        const [fx, fy, fw, fh] = primaryFace.box;
+        const [imgW, imgH] = data.vision.image_size;
+        
+        // Render box percentage
+        faceBox.style.left = `${(fx / imgW) * 100}%`;
+        faceBox.style.top = `${(fy / imgH) * 100}%`;
+        faceBox.style.width = `${(fw / imgW) * 100}%`;
+        faceBox.style.height = `${(fh / imgH) * 100}%`;
+        faceBox.classList.remove('hidden');
+      } else {
+        faceBox.classList.add('hidden');
+      }
+
+      // 3. Face match card
+      const nameEl = document.getElementById('detectedPlayerName');
+      const teamEl = document.getElementById('detectedPlayerTeam');
+      const badge = document.getElementById('faceConfidenceBadge');
+      const btnLearn = document.getElementById('btnLearnFace');
+
+      if (data.matched_player) {
+        nameEl.innerText = `${data.matched_player.first_name} ${data.matched_player.last_name}`;
+        teamEl.innerText = `${data.matched_player.team_name || ''} - #${data.matched_player.number || ''} (${data.matched_player.position || ''})`;
+        badge.innerText = `${data.face_confidence}% Match Volto`;
+        badge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        btnLearn.classList.add('hidden');
+      } else if (data.vision?.face_count > 0) {
+        nameEl.innerText = 'Volto rilevato - Giocatore non registrato';
+        teamEl.innerText = 'Clicca un giocatore dalla rosa per associarlo al volto';
+        badge.innerText = 'Volto non in archivio';
+        badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30';
+        btnLearn.classList.remove('hidden');
+      } else {
+        nameEl.innerText = 'Nessun volto chiaramente visibile';
+        teamEl.innerText = 'Seleziona manualmente il giocatore dalla rosa';
+        badge.innerText = 'Nessun volto';
+        badge.className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-500 border border-slate-700';
+        btnLearn.classList.add('hidden');
+      }
+
+      // 4. Caption & Keywords
+      document.getElementById('captionInput').value = data.suggested_caption || '';
+      renderKeywords(data.suggested_keywords || []);
+    }
+
+    function renderKeywords(keywords) {
+      const container = document.getElementById('keywordsChips');
+      const countEl = document.getElementById('kwCount');
+      countEl.innerText = keywords.length;
+      container.innerHTML = '';
+
+      keywords.forEach(kw => {
+        const span = document.createElement('span');
+        span.className = 'bg-surface px-2 py-0.5 rounded text-[11px] text-slate-300 border border-border/60';
+        span.innerText = kw;
+        container.appendChild(span);
+      });
+    }
+
+    function selectPlayerManually(player) {
+      if (!currentPhotoData) return;
+      currentPhotoData.matched_player = player;
+
+      document.getElementById('detectedPlayerName').innerText = `${player.first_name} ${player.last_name}`;
+      document.getElementById('detectedPlayerTeam').innerText = `${player.team_name || ''} - #${player.number || ''}`;
+      document.getElementById('btnLearnFace').classList.remove('hidden');
+
+      // Update caption
+      updateCaptionWithSubject(`${player.first_name} ${player.last_name}`, player.team_name);
+    }
+
+    function setActionType(actionCode) {
+      if (!currentPhotoData) return;
+      currentPhotoData.photo_type = actionCode;
+
+      // Re-trigger caption update
+      fetch('/api/rebuild-caption', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player_name: currentPhotoData.matched_player ? `${currentPhotoData.matched_player.first_name} ${currentPhotoData.matched_player.last_name}` : '',
+          team_name: currentPhotoData.matched_player?.team_name || currentMatchup?.home_team_name,
+          home_team: currentMatchup?.home_team_name,
+          away_team: currentMatchup?.away_team_name,
+          photo_type: actionCode
+        })
+      })
+      .then(r => r.json())
+      .then(res => {
+        document.getElementById('captionInput').value = res.caption;
+        renderKeywords(res.keywords);
+      });
+    }
+
+    function updateCaptionWithSubject(playerName, teamName) {
+      const curCaption = document.getElementById('captionInput').value;
+      const action = currentPhotoData?.photo_type || 'BALL_CHALLENGE';
+      setActionType(action);
+    }
+
+    async function trainCurrentFace() {
+      if (!currentPhotoData?.matched_player?.id || !currentPhotoData?.primary_face_embedding) {
+        alert('Seleziona prima il giocatore per associarlo a questo volto.');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/players/${currentPhotoData.matched_player.id}/train-face`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ embedding: currentPhotoData.primary_face_embedding })
+        });
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('btnLearnFace').classList.add('hidden');
+          document.getElementById('faceConfidenceBadge').innerText = '100% Volto Memorizzato';
+          document.getElementById('faceConfidenceBadge').className = 'text-xs font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30';
+        }
+      } catch (err) {
+        alert('Errore memorizzazione volto: ' + err);
+      }
+    }
+
+    async function approveAndSend() {
+      if (currentIndex < 0 || !photoQueue[currentIndex]) return;
+
+      const file = photoQueue[currentIndex];
+      const caption = document.getElementById('captionInput').value;
+      const playerId = currentPhotoData?.matched_player?.id || null;
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('caption', caption);
+      if (playerId) formData.append('player_id', playerId);
+      if (currentMatchup?.id) formData.append('matchup_id', currentMatchup.id);
+      if (currentPhotoData?.primary_face_embedding) {
+        formData.append('face_embedding', JSON.stringify(currentPhotoData.primary_face_embedding));
+      }
+
+      const btn = document.getElementById('btnApproveSend');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Scrittura IPTC & Invio a PhotoSender FTP...</span>';
+
+      try {
+        const res = await fetch('/api/approve-and-send', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          const saveStatus = document.getElementById('saveStatus');
+          saveStatus.innerHTML = `<i class="fa-solid fa-check"></i> Inviata a PhotoSender FTP (${data.filename})`;
+          saveStatus.classList.remove('hidden');
+
+          // Auto-advance to next photo after 400ms
+          setTimeout(() => {
+            if (currentIndex < photoQueue.length - 1) {
+              nextPhoto();
+            }
+          }, 400);
+        } else {
+          alert('Errore invio: ' + data.error);
+        }
+      } catch (err) {
+        alert('Errore rete invio: ' + err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-paper-plane text-base"></i><span>APPROVA METADATI E TRASMETTI SUBITO ALL\'FTP</span><span class="text-xs font-medium bg-emerald-700/60 px-2 py-0.5 rounded text-emerald-200">[BARRA SPAZIO / INVIO]</span>';
+      }
+    }
+
+    function copyCaption() {
+      const text = document.getElementById('captionInput').value;
+      navigator.clipboard.writeText(text);
+    }
+  </script>
+
+</body>
+</html>
