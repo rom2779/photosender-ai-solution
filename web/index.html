@@ -430,12 +430,12 @@
       const imageWrapper = document.getElementById('imageWrapper');
       const emptyState = document.getElementById('emptyState');
       const loader = document.getElementById('analysisLoader');
-      const faceBox = document.getElementById('faceBox');
+      const facesContainer = document.getElementById('facesContainer');
 
       emptyState.classList.add('hidden');
       imageWrapper.classList.remove('hidden');
       loader.classList.remove('hidden');
-      faceBox.classList.add('hidden');
+      if (facesContainer) facesContainer.innerHTML = '';
       document.getElementById('saveStatus').classList.add('hidden');
 
       // Create preview object URL
@@ -459,6 +459,7 @@
         renderAnalysisResult(data);
       } catch (err) {
         console.error('AI Analysis failed', err);
+        alert('Errore durante l\'analisi AI: ' + (err.message || err));
       } finally {
         loader.classList.add('hidden');
       }
