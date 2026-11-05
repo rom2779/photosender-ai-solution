@@ -94,6 +94,11 @@ async def analyze_face(
         faces = FaceEngine.detect_and_encode_faces(temp_path)
         primary_face = faces[0] if faces else None
 
+        # Image dimensions for bounding box scaling
+        import cv2
+        img_check = cv2.imread(temp_path)
+        img_h, img_w = img_check.shape[:2] if img_check is not None else (1000, 1000)
+
         # 2. Get active roster players for the match
         all_players = []
         home_team_name = "Home Team"
@@ -178,8 +183,10 @@ async def analyze_face(
             "vision": {
                 "face_count": len(faces),
                 "primary_face": clean_primary,
-                "overall_sharpness": clean_primary["sharpness"] if clean_primary else 25.0
+                "overall_sharpness": clean_primary["sharpness"] if clean_primary else 25.0,
+                "image_size": [img_w, img_h]
             },
+            "face_thumbnail_b64": primary_face.get("thumbnail_b64") if primary_face else None,
             "matched_player": matched_player,
             "face_confidence": face_confidence,
             "primary_face_embedding": face_emb_list,

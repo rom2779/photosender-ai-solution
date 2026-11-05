@@ -493,6 +493,13 @@
       const teamEl = document.getElementById('detectedPlayerTeam');
       const badge = document.getElementById('faceConfidenceBadge');
       const btnLearn = document.getElementById('btnLearnFace');
+      const faceThumb = document.getElementById('faceThumb');
+
+      if (data.face_thumbnail_b64) {
+        faceThumb.innerHTML = `<img src="${data.face_thumbnail_b64}" class="w-full h-full object-cover rounded-lg" alt="Face">`;
+      } else {
+        faceThumb.innerHTML = '<i class="fa-solid fa-user text-lg text-slate-500"></i>';
+      }
 
       if (data.matched_player) {
         nameEl.innerText = `${data.matched_player.first_name} ${data.matched_player.last_name}`;
@@ -653,3 +660,4 @@
 
 </body>
 </html>
+
