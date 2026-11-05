@@ -178,11 +178,20 @@ async def analyze_face(
                 "sharpness": primary_face["sharpness"]
             }
 
+        all_clean_faces = []
+        for f in faces:
+            all_clean_faces.append({
+                "box": [int(v) for v in f["box"]],
+                "framing": f["framing"],
+                "sharpness": f["sharpness"]
+            })
+
         return {
             "success": True,
             "vision": {
                 "face_count": len(faces),
                 "primary_face": clean_primary,
+                "all_faces": all_clean_faces,
                 "overall_sharpness": clean_primary["sharpness"] if clean_primary else 25.0,
                 "image_size": [img_w, img_h]
             },

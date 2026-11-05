@@ -107,9 +107,9 @@
         </div>
 
         <!-- Rendered Image Canvas -->
-        <div id="imageWrapper" class="hidden w-full h-full relative flex items-center justify-center">
+        <div id="imageWrapper" class="hidden w-full h-full relative flex items-center justify-center overflow-hidden">
           <img id="mainImage" src="" class="max-w-full max-h-full object-contain shadow-2xl rounded" alt="Preview">
-          <div id="faceBox" class="absolute border-2 border-emerald-400 rounded shadow-lg pointer-events-none transition-all hidden"></div>
+          <div id="facesContainer" class="absolute inset-0 pointer-events-none"></div>
         </div>
 
         <!-- Loading Spinner -->
@@ -470,23 +470,8 @@
       document.getElementById('statSharpness').innerText = `Nitidezza: ${data.vision?.overall_sharpness || '--'}`;
       document.getElementById('statFaces').innerText = `Volti: ${data.vision?.face_count || 0}`;
 
-      // 2. Face Box on Canvas if face detected
-      const faceBox = document.getElementById('faceBox');
-      const primaryFace = data.vision?.primary_face;
-      if (primaryFace && primaryFace.box) {
-        // Calculate relative coordinates
-        const [fx, fy, fw, fh] = primaryFace.box;
-        const [imgW, imgH] = data.vision.image_size;
-        
-        // Render box percentage
-        faceBox.style.left = `${(fx / imgW) * 100}%`;
-        faceBox.style.top = `${(fy / imgH) * 100}%`;
-        faceBox.style.width = `${(fw / imgW) * 100}%`;
-        faceBox.style.height = `${(fh / imgH) * 100}%`;
-        faceBox.classList.remove('hidden');
-      } else {
-        faceBox.classList.add('hidden');
-      }
+      // 2. Draw pixel-perfect face boxes
+      updateFaceBoxes();
 
       // 3. Face match card
       const nameEl = document.getElementById('detectedPlayerName');
@@ -526,6 +511,61 @@
       renderKeywords(data.suggested_keywords || []);
     }
 
+    function updateFaceBoxes() {
+      const img = document.getElementById('mainImage');
+      const container = document.getElementById('facesContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!currentPhotoData || !img.complete || img.naturalWidth === 0) return;
+
+      const faces = currentPhotoData.vision?.all_faces || (currentPhotoData.vision?.primary_face ? [currentPhotoData.vision.primary_face] : []);
+      if (!faces || faces.length === 0) return;
+
+      const origW = currentPhotoData.vision.image_size?.[0] || img.naturalWidth;
+      const origH = currentPhotoData.vision.image_size?.[1] || img.naturalHeight;
+
+      // Exact rendered geometry of the image inside wrapper
+      const dispW = img.clientWidth;
+      const dispH = img.clientHeight;
+      const offX = img.offsetLeft;
+      const offY = img.offsetTop;
+
+      const scaleX = dispW / origW;
+      const scaleY = dispH / origH;
+
+      faces.forEach((f, idx) => {
+        const [fx, fy, fw, fh] = f.box;
+        const isPrimary = (idx === 0);
+
+        const boxEl = document.createElement('div');
+        boxEl.className = `absolute border-2 rounded shadow-lg transition-all ${isPrimary ? 'border-emerald-400 bg-emerald-500/10' : 'border-sky-400/80 bg-sky-500/10'}`;
+        boxEl.style.left = `${offX + (fx * scaleX)}px`;
+        boxEl.style.top = `${offY + (fy * scaleY)}px`;
+        boxEl.style.width = `${fw * scaleX}px`;
+        boxEl.style.height = `${fh * scaleY}px`;
+
+        // Tag label above box
+        const label = document.createElement('div');
+        label.className = `absolute -top-5 left-0 text-[10px] font-black px-1.5 py-0.5 rounded shadow uppercase tracking-wider whitespace-nowrap flex items-center gap-1 ${isPrimary ? 'bg-emerald-500 text-slate-900' : 'bg-sky-500 text-slate-900'}`;
+        
+        let labelText = isPrimary && currentPhotoData.matched_player ? currentPhotoData.matched_player.last_name.toUpperCase() : `VOLTO ${idx + 1}`;
+        label.innerHTML = `<i class="fa-solid fa-user text-[8px]"></i> <span>${labelText}</span>`;
+        boxEl.appendChild(label);
+
+        container.appendChild(boxEl);
+      });
+    }
+
+    window.addEventListener('resize', () => {
+      updateFaceBoxes();
+    });
+
+    document.getElementById('mainImage').addEventListener('load', () => {
+      updateFaceBoxes();
+    });
+
+
     function renderKeywords(keywords) {
       const container = document.getElementById('keywordsChips');
       const countEl = document.getElementById('kwCount');
@@ -550,6 +590,7 @@
 
       // Update caption
       updateCaptionWithSubject(`${player.first_name} ${player.last_name}`, player.team_name);
+      updateFaceBoxes();
     }
 
     function setActionType(actionCode) {
